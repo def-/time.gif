@@ -8,14 +8,6 @@ import Data.List
 
 type Position = (Int,Int)
 
-data Action = MoveLeft | MoveRight | MoveUp | MoveDown deriving Eq
-
-data State = State
-    { oldAction :: Action
-    , snake :: [Position]
-    , food :: Position
-    }
-
 numbers =
   [ [ [1,1,1]
     , [1,0,1]
@@ -124,14 +116,6 @@ frame xs = map framepart (z : xs ++ [z])
 
 colorize 1 = (3,3,3)
 colorize 0 = (0,0,0)
-
-charToAction :: Char -> Action -> Action
-charToAction c oldAction = case c of
-  'w' -> MoveUp
-  'a' -> MoveLeft
-  's' -> MoveDown
-  'd' -> MoveRight
-  _   -> oldAction
 
 scale :: Int -> Frame -> Frame
 scale z frame = concatMap (replicate z) (map (concatMap (replicate z)) frame)
