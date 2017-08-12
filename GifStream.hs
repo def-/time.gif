@@ -1,11 +1,12 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 
 -- | Generate dynamic GIF streams and provide them on an HTTP server.
 module GifStream (
   -- Functions
   server,
+  frame,
+  mapLine,
   -- Types
-  RGB,
   Frame,
   FrameSignal,
   Logic
@@ -15,19 +16,21 @@ module GifStream (
 import System.IO
 
 import Network hiding (accept)
-import Network.Socket
-import Network.Socket.ByteString (sendAll)
+import Network.Socket (accept)
+import Network.Socket.ByteString (sendAll, recv)
 
-import Control.Monad
 import Control.Concurrent
+import Control.Exception
+import Control.Monad
 
+import Data.Maybe
+import Data.List
 import Data.IORef
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8() -- for OverloadedStrings
 
-type RGB = (Int,Int,Int) -- ^ Values in [0..3]
-type Frame = [[RGB]]
+type Frame = (B.ByteString,Int,Int)
 type FrameSignal = MSignal Frame
 type Logic = IO () -> IO Char -> (Frame -> IO ()) -> IO ()
 
@@ -57,15 +60,17 @@ loop delay frameSignal sock = do
   forkIO $ body conn
   loop delay frameSignal sock
 
-  where -- lower delay in GIF to force browser to actually show the gif we send
+  where
     body c = do
       f <- receiveMSignal frameSignal
+      recv c 4096
+      threadDelay 500000
       sendAll c $ msg $ initialFrame (delay `div` 10000) f
       nextFrame c
 
     nextFrame c = do
-      f <- receiveMSignal frameSignal
-      sendAll c $ frame (delay `div` 10000) f
+      (f, _, _) <- receiveMSignal frameSignal
+      sendAll c f
       nextFrame c
 
     msg content = B.intercalate "\r\n"
@@ -100,16 +105,14 @@ inputGetter = do
 
 -- | Create the initial frame of a GIF. Note that this frame determines the size of the GIF.
 initialFrame :: Int -> Frame -> B.ByteString
-initialFrame delay img = B.concat
+initialFrame delay (img, w, h) = B.concat
   [ "GIF89a"
   , number w, number h, gctInfo, bgColor, aspect -- logical screen descriptor
   , realCT, dummyCT                              -- color table
   , "!\255\vNETSCAPE2.0\ETX\SOH\NUL\NUL\NUL"     -- application extension
-  , frame delay img
+  , img
   ]
   where
-    w = length $ head img
-    h = length img
     gctInfo = B.singleton 0xf6
     bgColor = smallNumber 127
     aspect  = "\NUL"
@@ -120,30 +123,27 @@ initialFrame delay img = B.concat
 
 -- | Create the next frame in a GIF
 frame :: Int -> Frame -> B.ByteString
-frame delay img = B.concat
+frame delay (img, w, h) = B.concat
   [ "!\249\EOT\b", number delay, "\255", "\NUL"  -- graphic control extension
   , ",", yPos, xPos, number w, number h, localCT -- image descriptor
-  , lzwMinSize, imageData, "\NUL"                -- image
+  , lzwMinSize, img, "\NUL"                      -- image
   ]
   where
-    w = length $ head img
-    h = length img
     yPos = number 0
     xPos = number 0
     localCT = "\NUL"
 
     lzwMinSize = B.singleton 0x07
-    imageData = B.concat $ map (B.concat . mapLine) img
 
-    mapLine x
-      | null ys   = z
-      | otherwise = z ++ mapLine ys
-      where (y,ys) = splitAt 126 x
-            z = [ bytesToFollow, clear
-                , B.pack $ map (\(r,g,b) -> fromIntegral $ 16*r+4*g+b) y
-                ]
-            bytesToFollow = smallNumber $ length y + 1
-            clear = B.singleton 0x80
+mapLine x
+  | null ys   = z
+  | otherwise = z ++ mapLine ys
+  where (y,ys) = splitAt 126 x
+        z = [ bytesToFollow, clear
+            , B.pack $ map (\(r,g,b) -> fromIntegral $ 16*r+4*g+b) y
+            ]
+        bytesToFollow = smallNumber $ length y + 1
+        clear = B.singleton 0x80
 
 -- | Close the GIF file
 finalize :: B.ByteString

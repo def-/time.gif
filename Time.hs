@@ -6,6 +6,8 @@ import Data.Time.Clock
 import Data.Time.LocalTime
 import Data.List
 
+import qualified Data.ByteString as B
+
 delay = 1000000 -- in µs
 port = 5002
 
@@ -23,23 +25,26 @@ logic wait getInput sendFrame = go
       now <- getCurrentTime
       let (TimeOfDay h m s) = localTimeOfDay $ utcToLocalTime utc now
 
-      let display = map (map colorize) $ frame $
+      let display = scale zoom $ map (map colorize) $ framing $
             foldr1 (zipWith (++)) $ map (numbers !!) $ intersperse 10
               [ h `div` 10, h `mod` 10, 11
               , m `div` 10, m `mod` 10, 11
               , (floor s) `div` 10, (floor s) `mod` 10
               ]
 
-      sendFrame (scale zoom display)
+      let w = length $ head display
+      let h = length display
+      let img = frame (delay `div` 10000) (B.concat $ map (B.concat . mapLine) display, w, h)
+
+      sendFrame (img, w, h)
       wait
       go
 
-frame xs = map (preappend 0) $ preappend (take (length (xs !! 0)) (repeat 0)) xs
+framing xs = map (preappend 0) $ preappend (take (length (xs !! 0)) (repeat 0)) xs
 
 preappend x xs = x : xs ++ [x]
 
 colorize 1 = (3,3,3)
 colorize 0 = (0,0,0)
 
-scale :: Int -> Frame -> Frame
 scale z frame = concatMap (replicate z) (map (concatMap (replicate z)) frame)
