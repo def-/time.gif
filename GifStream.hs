@@ -94,6 +94,7 @@ loop delay frameSignal sock = do
       , "Cache-Control: no-cache"
       , "Cache-Control: no-store"
       , "Cache-Control: no-transform"
+      , "Expires: 0"
       , ""
       , content
       ]
