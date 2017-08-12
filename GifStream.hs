@@ -73,6 +73,9 @@ loop delay frameSignal sock = do
       , "Server: gifstream/0.1"
       , "Content-Type: image/gif"
       , "Content-Transfer-Encoding: binary"
+      , "Cache-Control: no-cache"
+      , "Cache-Control: no-store"
+      , "Cache-Control: no-transform"
       , ""
       , content
       ]
