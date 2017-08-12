@@ -7,6 +7,7 @@ import Data.Time.LocalTime
 import Data.List
 
 import qualified Data.ByteString as B
+import qualified Data.Vector.Storable as V
 
 delay = 1000000 -- in µs
 port = 5002
@@ -34,13 +35,15 @@ logic wait getInput sendFrame = go
 
       let w = length $ head display
       let h = length display
-      let img = frame (delay `div` 10000) (B.concat $ map (B.concat . mapLine) display, w, h)
+      let img = frame (delay `div` 10000) (B.concat $ map mapLine display, w, h)
 
       sendFrame (img, w, h)
       wait
       go
 
 framing xs = map (preappend 0) $ preappend (take (length (xs !! 0)) (repeat 0)) xs
+
+mapLine x = B.pack $ map (\(r,g,b) -> fromIntegral $ 16*r+4*g+b) x
 
 preappend x xs = x : xs ++ [x]
 

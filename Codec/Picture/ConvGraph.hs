@@ -1,0 +1,10 @@
+-- $graph
+--
+-- The following graph describe the differents way to convert between pixel types,
+--
+-- * Nodes describe pixel type
+--
+-- * Arrows describe functions
+--
+-- <<docimages/pixelgraph.svg>>
+--

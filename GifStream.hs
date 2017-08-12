@@ -5,7 +5,6 @@ module GifStream (
   -- Functions
   server,
   frame,
-  mapLine,
   -- Types
   Frame,
   FrameSignal,
@@ -14,10 +13,13 @@ module GifStream (
   where
 
 import System.IO
+import System.IO.Unsafe
 
 import Network hiding (accept)
 import Network.Socket (accept)
 import Network.Socket.ByteString (sendAll, recv)
+
+import Codec.Picture.Gif.LZWEncoding
 
 import Control.Concurrent
 import Control.Exception
@@ -26,9 +28,20 @@ import Control.Monad
 import Data.Maybe
 import Data.List
 import Data.IORef
+import Data.Word (Word8)
 
+import Data.Binary.Put( Put
+                      , putWord8
+                      , putWord16le
+                      , putLazyByteString
+                      , runPut
+                      )
+
+import qualified Data.Vector.Storable as V
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8() -- for OverloadedStrings
+import Data.ByteString.Lazy (toStrict)
 
 type Frame = (B.ByteString,Int,Int)
 type FrameSignal = MSignal Frame
@@ -114,7 +127,7 @@ initialFrame delay (img, w, h) = B.concat
   ]
   where
     gctInfo = B.singleton 0xf6
-    bgColor = smallNumber 127
+    bgColor = B.singleton 128
     aspect  = "\NUL"
 
     realCT  = B.concat $ map B.pack [[r,g,b] | r <- colors, g <- colors, b <- colors]
@@ -126,39 +139,40 @@ frame :: Int -> Frame -> B.ByteString
 frame delay (img, w, h) = B.concat
   [ "!\249\EOT\b", number delay, "\255", "\NUL"  -- graphic control extension
   , ",", yPos, xPos, number w, number h, localCT -- image descriptor
-  , lzwMinSize, img, "\NUL"                      -- image
+  , lzwKeySize, lzwImg                           -- image
   ]
   where
     yPos = number 0
     xPos = number 0
+    lzwKeySize = B.singleton (computeMinimumLzwKeySize w)
+    lzwImg = toStrict $ runPut $ putDataBlocks $
+             lzwEncode (computeMinimumLzwKeySize w) $
+             V.generate (B.length img) $ \i -> B.index img i
     localCT = "\NUL"
 
-    lzwMinSize = B.singleton 0x07
+putDataBlocks :: BL.ByteString -> Put
+putDataBlocks wholeString = putSlices wholeString >> putWord8 0
+  where putSlices str | BL.length str == 0 = pure ()
+                      | BL.length str > 0xFF =
+            let (before, after) = BL.splitAt 0xFF str in
+            putWord8 0xFF >> putLazyByteString before >> putSlices after
+        putSlices str =
+            putWord8 (fromIntegral $ BL.length str) >> putLazyByteString str
 
-mapLine x
-  | null ys   = z
-  | otherwise = z ++ mapLine ys
-  where (y,ys) = splitAt 126 x
-        z = [ bytesToFollow, clear
-            , B.pack $ map (\(r,g,b) -> fromIntegral $ 16*r+4*g+b) y
-            ]
-        bytesToFollow = smallNumber $ length y + 1
-        clear = B.singleton 0x80
+computeMinimumLzwKeySize itemCount = go 2
+  where go k | 2 ^ k >= itemCount = k
+             | otherwise = go $ k + 1
 
 -- | Close the GIF file
 finalize :: B.ByteString
 finalize = B.concat [bytesToFollow, stop, "\NUL", ";"]
   where
-    bytesToFollow = smallNumber 1
+    bytesToFollow = B.singleton 1
     stop = B.singleton 0x81
-
--- | Convert a number to one Byte
-smallNumber :: Int -> B.ByteString
-smallNumber x = B.singleton $ fromIntegral $ x `mod` 256
 
 -- | Convert a number to two Bytes
 number :: Int -> B.ByteString
-number x = B.pack $ map fromIntegral [x `mod` 256, x `div` 256]
+number x = toStrict $ runPut $ putWord16le $ fromIntegral x
 
 -- | A Module for broadcast signalling between threads.
 -- By Joachim Breitner
