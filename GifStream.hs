@@ -16,7 +16,7 @@ import System.IO
 import System.IO.Unsafe
 
 import Network hiding (accept)
-import Network.Socket (accept)
+import Network.Socket (accept, close)
 import Network.Socket.ByteString (sendAll, recv)
 
 import Codec.Picture.Gif.LZWEncoding
@@ -74,7 +74,7 @@ loop delay frameSignal sock = do
   loop delay frameSignal sock
 
   where
-    body c = do
+    body c = handle (\(SomeException _) -> close c) $ do
       f <- receiveMSignal frameSignal
       recv c 4096
       threadDelay 500000
