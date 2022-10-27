@@ -10,7 +10,7 @@ maintainer:          dennis@felsin9.de
 -- copyright:
 category:            Web
 build-type:          Simple
-extra-source-files:  ChangeLog.md, README.md
+extra-source-files:  README.md
 cabal-version:       >=1.10
 
 Source-Repository head
