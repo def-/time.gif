@@ -6,7 +6,7 @@ homepage:            https://hookrace.net/blog/time.gif
 license:             BSD3
 license-file:        LICENSE
 author:              Dennis Felsing
-maintainer:          dennis@felsin9.de
+maintainer:          dennis@felsing.org
 -- copyright:
 category:            Web
 build-type:          Simple
